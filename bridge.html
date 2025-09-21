@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teachable Machine → Micro:bit</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
+</head>
+<body>
+    <h1>웹캠 모델 → Micro:bit</h1>
+    <video id="webcam" autoplay playsinline width="320" height="240"></video><br>
+    <button id="loadBtn">모델 불러오기</button>
+    <button id="connectBtn">Micro:bit 연결</button>
+    <p id="status">상태: 대기 중</p>
+
+    <script>
+        let model;
+        let port;
+        let writer;
+
+        const modelURL = "https://teachablemachine.withgoogle.com/models/XXXX/model.json"; // 본인 모델 URL
+
+        // 웹캠 시작
+        async function initWebcam() {
+            const webcam = document.getElementById('webcam');
+            const stream = await navigator.mediaDevices.getUserMedia({video:true});
+            webcam.srcObject = stream;
+        }
+        initWebcam();
+
+        // 모델 불러오기
+        document.getElementById("loadBtn").addEventListener("click", async () => {
+            try {
+                model = await tf.loadGraphModel(modelURL);
+                document.getElementById("status").innerText = "상태: 모델 불러오기 성공!";
+                console.log("모델 준비 완료");
+            } catch (err) {
+                alert("모델 불러오기 실패: " + err);
+                console.error(err);
+            }
+        });
+
+        // Micro:bit 연결
+        document.getElementById("connectBtn").addEventListener("click", async () => {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                writer = port.writable.getWriter();
+                document.getElementById("status").innerText = "상태: Micro:bit 연결 완료!";
+                console.log("Micro:bit 연결됨");
+            } catch (err) {
+                alert("연결 실패: " + err);
+                console.error(err);
+            }
+        });
+
+        // 예측 결과 Micro:bit 전송 (1초 간격 테스트)
+        setInterval(async () => {
+            if (!model || !writer) return;
+            const video = document.getElementById('webcam');
+            const tensor = tf.browser.fromPixels(video).resizeBilinear([224,224]).expandDims(0).div(255);
+            const prediction = model.predict(tensor);
+            const data = prediction.dataSync(); // 예측 값 배열
+            const maxIndex = data.indexOf(Math.max(...data));
+            await writer.write(new TextEncoder().encode(maxIndex + "\n"));
+        }, 1000);
+    </script>
+</body>
+</html>
